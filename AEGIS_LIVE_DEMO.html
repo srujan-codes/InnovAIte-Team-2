@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEGIS — Cascading Risk Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #04080f;
+    --bg-panel: #0a1020;
+    --bg-card: #0d1528;
+    --border: rgba(100,120,180,0.08);
+    --border-active: rgba(99,102,241,0.25);
+    --text-primary: #e8ecf4;
+    --text-secondary: #8094b4;
+    --text-muted: #3d5070;
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,0.3);
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --pink: #ec4899;
+    --cyan: #06b6d4;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Outfit', sans-serif; background: var(--bg-deep); color: var(--text-primary);
+    overflow: hidden; height: 100vh; width: 100vw;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Layout */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #header {
+    height: 52px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; background: rgba(10,16,32,0.97); border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px); z-index: 100; flex-shrink: 0;
+  }
+  #main { flex:1; display: flex; overflow: hidden; position: relative; }
+  #sidebar {
+    width: 310px; flex-shrink:0; display: flex; flex-direction: column;
+    background: var(--bg-panel); border-right: 1px solid var(--border); z-index: 20;
+  }
+  #map-area { flex:1; position: relative; overflow: hidden; }
+  #timeline-bar {
+    position: absolute; bottom: 0; left: 310px; right: 0; z-index: 30;
+    background: linear-gradient(transparent 0%, rgba(4,8,15,0.97) 40%);
+    padding: 35px 20px 14px;
+  }
+
+  /* Header */
+  .logo { display:flex; align-items:center; gap:11px; }
+  .logo-mark {
+    width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6); font-size:16px; font-weight:800; color:#fff;
+  }
+  .logo-text { font-size:16px; font-weight:700; letter-spacing:-0.5px; }
+  .logo-sub { font-size:8px; color:var(--text-muted); letter-spacing:1.5px; }
+  .badge {
+    font-size:7px; padding:2px 7px; background:rgba(99,102,241,0.12); color:#818cf8;
+    border-radius:4px; letter-spacing:1.5px; font-weight:600; margin-left:8px; vertical-align:middle;
+  }
+  .llm-bar {
+    display:flex; align-items:center; gap:10px; padding:5px 12px;
+    background:rgba(15,23,42,0.7); border-radius:6px; border:1px solid var(--border);
+  }
+  .llm-bar .label { font-size:7.5px; color:var(--text-muted); letter-spacing:1.5px; }
+  .llm-dot {
+    width:5px; height:5px; border-radius:50%; display:inline-block; margin-right:4px;
+    transition: all 0.4s;
+  }
+  .llm-name { font-size:9px; }
+  .llm-idle .llm-dot { background: #1e293b; }
+  .llm-idle .llm-name { color: #334155; }
+  .llm-analyzing .llm-dot { background: var(--amber); box-shadow:0 0 6px var(--amber); animation: blink 0.7s infinite; }
+  .llm-analyzing .llm-name { color: var(--amber); }
+  .llm-confirmed .llm-dot { background: var(--green); box-shadow:0 0 6px var(--green); }
+  .llm-confirmed .llm-name { color: var(--green); }
+
+  /* Sidebar */
+  .section-title {
+    font-size:8px; color:var(--text-muted); letter-spacing:2px; padding:14px 16px 8px;
+    border-bottom:1px solid var(--border);
+  }
+  #scenarios { padding:10px; overflow-y:auto; max-height: 260px; display:flex; flex-direction:column; gap:5px; }
+  .scenario-btn {
+    padding:9px 11px; text-align:left; cursor:pointer; border-radius:6px;
+    background:transparent; border:1px solid transparent; transition: all 0.2s;
+    display: block; width: 100%;
+  }
+  .scenario-btn:hover { background:rgba(99,102,241,0.06); border-color:rgba(99,102,241,0.15); }
+  .scenario-btn.active { background:rgba(99,102,241,0.1); border-color:rgba(99,102,241,0.25); }
+  .scenario-btn .sc-name { font-size:10.5px; font-weight:600; color:var(--text-secondary); transition:color 0.2s; }
+  .scenario-btn.active .sc-name { color:#a5b4fc; }
+  .scenario-btn .sc-desc { font-size:8.5px; color:var(--text-muted); margin-top:3px; line-height:1.4; }
+  .scenario-btn .sc-tag {
+    display:inline-block; font-size:7px; padding:1px 5px; border-radius:3px;
+    margin-top:4px; letter-spacing:0.5px; font-weight:600;
+  }
+
+  /* Event Feed */
+  #event-feed { flex:1; overflow-y:auto; padding:8px 10px; }
+  .event-card {
+    padding:9px 10px; border-radius:6px; margin-bottom:5px; cursor:pointer;
+    background:rgba(15,23,42,0.3); border:1px solid transparent; transition: all 0.2s;
+    animation: slideUp 0.35s ease both;
+  }
+  .event-card:hover { background:rgba(148,163,184,0.05); }
+  .event-card.selected { border-color:var(--border-active); background:rgba(99,102,241,0.06); }
+  .event-card .ev-header { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+  .ev-time {
+    font-size:7.5px; padding:1.5px 5px; border-radius:3px;
+    background:rgba(148,163,184,0.05); color:var(--text-muted);
+  }
+  .ev-region { font-size:9.5px; font-weight:600; }
+  .ev-label { font-size:9.5px; color:var(--text-secondary); line-height:1.5; }
+  .ev-severity-bar {
+    height:2.5px; background:rgba(148,163,184,0.04); border-radius:2px;
+    margin-top:5px; overflow:hidden;
+  }
+  .ev-severity-fill { height:100%; border-radius:2px; transition: width 0.5s; }
+  .ev-severity-label { font-size:7px; color:var(--text-muted); margin-top:2px; }
+  .empty-state {
+    color:var(--text-muted); font-size:11px; text-align:center; margin-top:40px; line-height:2;
+  }
+
+  /* Map */
+  #map-svg { width:100%; height:100%; position:absolute; inset:0; }
+  .map-grid {
+    position:absolute; inset:0; opacity:0.025;
+    background-image: linear-gradient(rgba(99,102,241,0.5) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(99,102,241,0.5) 1px, transparent 1px);
+    background-size: 50px 50px; pointer-events:none;
+  }
+
+  /* Glass Box */
+  #glassbox {
+    position:absolute; top:14px; left:14px; z-index:30; width:290px;
+    background:rgba(6,11,24,0.96); border-radius:10px; border:1px solid rgba(99,102,241,0.12);
+    backdrop-filter:blur(16px); display:none;
+    animation: slideUp 0.3s ease;
+  }
+  #glassbox.visible { display:block; }
+  .gb-header {
+    padding:10px 14px; display:flex; justify-content:space-between; align-items:center;
+    border-bottom:1px solid rgba(99,102,241,0.06);
+  }
+  .gb-close { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; }
+  .gb-body { padding:12px 14px; }
+  .gb-row { font-size:9px; line-height:2.2; color:var(--text-secondary); }
+  .gb-key { color:#818cf8; }
+  .gb-green { color:var(--green); }
+
+  /* Alert */
+  #alert-box {
+    position:absolute; top:14px; right:14px; z-index:30; width:275px;
+    background:rgba(6,11,24,0.94); border-radius:8px; backdrop-filter:blur(12px);
+    display:none; animation: slideUp 0.35s ease;
+  }
+  #alert-box.visible { display:block; }
+
+  /* Timeline */
+  .tl-container {
+    display:flex; align-items:center; gap:14px; padding:10px 16px;
+    background:rgba(15,23,42,0.92); border-radius:10px; border:1px solid rgba(99,102,241,0.08);
+    backdrop-filter:blur(12px);
+  }
+  .tl-btn {
+    width:34px; height:34px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+    font-size:13px; cursor:pointer; transition: all 0.2s; border: 1px solid;
+  }
+  .tl-play { background:rgba(99,102,241,0.12); border-color:rgba(99,102,241,0.25); color:#818cf8; }
+  .tl-play:hover { background:rgba(99,102,241,0.22); }
+  .tl-stop { background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.25); color:#f87171; }
+  .tl-reset { background:rgba(148,163,184,0.04); border-color:var(--border); color:var(--text-muted); }
+  .tl-track { flex:1; position:relative; height:30px; display:flex; align-items:center; }
+  .tl-rail { position:absolute; left:0; right:0; height:2px; background:rgba(148,163,184,0.06); border-radius:1px; }
+  .tl-progress {
+    position:absolute; left:0; height:2px; border-radius:1px;
+    background:linear-gradient(90deg, #6366f1, #ef4444);
+    box-shadow:0 0 8px rgba(99,102,241,0.3); transition:width 0.4s ease;
+  }
+  .tl-marker {
+    position:absolute; transform:translateX(-50%); display:flex; flex-direction:column;
+    align-items:center; cursor:pointer; z-index:2;
+  }
+  .tl-dot {
+    width:6px; height:6px; border-radius:50%; border:1.5px solid #334155;
+    background:#1e293b; transition: all 0.3s;
+  }
+  .tl-dot.reached { border-color:transparent; background:#6366f1; width:8px; height:8px; }
+  .tl-dot.current { background:#ef4444; box-shadow:0 0 10px rgba(239,68,68,0.5); width:10px; height:10px; }
+  .tl-label { font-size:7px; margin-top:4px; color:#334155; transition:color 0.3s; }
+  .tl-label.reached { color:var(--text-secondary); }
+  .tl-label.current { color:var(--text-primary); font-weight:600; }
+  .speed-btn {
+    padding:2px 7px; border-radius:3px; font-size:8.5px; cursor:pointer; transition:all 0.2s;
+    border:1px solid var(--border); background:transparent; color:var(--text-muted);
+  }
+  .speed-btn.active { background:rgba(99,102,241,0.15); border-color:rgba(99,102,241,0.25); color:#a5b4fc; }
+  .tl-time { font-size:10px; min-width:65px; text-align:right; color:#334155; }
+  .tl-time.active { color:#818cf8; }
+
+  /* Stat counters */
+  #stats-bar {
+    position:absolute; bottom:80px; left:310px; right:0; z-index:20;
+    display:flex; justify-content:center; gap:10px; padding:0 20px; pointer-events:none;
+  }
+  .stat-card {
+    padding:8px 16px; background:rgba(6,11,24,0.9); border-radius:8px;
+    border:1px solid var(--border); backdrop-filter:blur(8px);
+    text-align:center; min-width:110px; pointer-events:all;
+  }
+  .stat-value { font-size:20px; font-weight:700; }
+  .stat-label { font-size:7.5px; color:var(--text-muted); letter-spacing:1.5px; margin-top:2px; }
+
+  /* Animations */
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+  @keyframes slideUp { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeIn { from{opacity:0}to{opacity:1} }
+  @keyframes pulse { 0%,100%{opacity:0.4;transform:scale(1)}50%{opacity:1;transform:scale(1.12)} }
+  @keyframes rippleOut { 0%{r:6;opacity:0.6;stroke-width:2}100%{r:40;opacity:0;stroke-width:0.5} }
+  @keyframes dashFlow { from{stroke-dashoffset:20}to{stroke-dashoffset:0} }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.1); border-radius:2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <div class="logo">
+      <div class="logo-mark">Æ</div>
+      <div>
+        <div class="logo-text">AEGIS <span class="badge">LIVE SIMULATION</span></div>
+        <div class="logo-sub mono">AI-ENABLED GLOBAL INTELLIGENCE FOR SYSTEMIC RESILIENCE</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="llm-bar">
+        <span class="label mono">COMMONSTACK.AI</span>
+        <span id="llm-claude" class="llm-idle"><span class="llm-dot"></span><span class="llm-name mono">Claude</span></span>
+        <span id="llm-gpt" class="llm-idle"><span class="llm-dot"></span><span class="llm-name mono">GPT-4</span></span>
+        <span id="llm-gemini" class="llm-idle"><span class="llm-dot"></span><span class="llm-name mono">Gemini</span></span>
+      </div>
+      <div id="global-severity" style="font-size:11px;font-weight:700;color:var(--text-muted);transition:color 0.5s;" class="mono">
+        GLOBAL RISK: —
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="section-title mono">SELECT SCENARIO</div>
+      <div id="scenarios"></div>
+      <div class="section-title mono" id="feed-title">AWAITING SIMULATION</div>
+      <div id="event-feed"></div>
+    </div>
+
+    <!-- Map -->
+    <div id="map-area">
+      <div class="map-grid"></div>
+      <svg id="map-svg" viewBox="100 60 750 320" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="bigGlow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <!-- World landmass outlines -->
+        <g id="world-land" fill="rgba(148,163,184,0.03)" stroke="rgba(148,163,184,0.07)" stroke-width="0.5">
+          <!-- North America -->
+          <path d="M160,130 Q180,110 220,105 Q250,100 270,108 Q285,115 290,130 Q288,145 280,155 Q275,160 270,165 L265,175 Q260,180 255,185 L250,188 Q240,192 235,195 L228,198 Q220,200 215,198 Q200,192 190,180 Q175,165 165,150 Q160,140 160,130Z"/>
+          <!-- Central America -->
+          <path d="M228,198 Q232,205 238,210 Q242,215 248,220 Q252,225 250,228 Q245,232 240,230 Q235,225 230,218 Q226,210 225,205Z"/>
+          <!-- South America -->
+          <path d="M270,220 Q285,215 300,218 Q315,222 325,235 Q335,250 340,270 Q342,290 338,305 Q330,320 320,330 Q310,335 300,330 Q290,322 285,310 Q278,295 275,275 Q272,255 268,240 Q266,230 270,220Z"/>
+          <!-- Europe -->
+          <path d="M465,110 Q480,105 500,108 Q520,110 535,115 Q545,120 548,128 Q550,138 545,145 Q538,150 530,152 Q520,148 510,150 Q500,152 492,148 Q485,145 478,140 Q470,135 465,128 Q462,120 465,110Z"/>
+          <!-- Africa -->
+          <path d="M480,175 Q495,168 510,172 Q525,175 535,185 Q545,198 548,215 Q550,235 548,255 Q545,275 540,290 Q532,305 520,312 Q508,315 498,310 Q488,302 482,290 Q476,275 474,255 Q472,235 474,215 Q475,195 478,185Z"/>
+          <!-- Middle East -->
+          <path d="M548,155 Q560,150 575,155 Q585,160 590,170 Q588,178 580,182 Q570,185 560,182 Q552,178 548,170 Q546,162 548,155Z"/>
+          <!-- Russia/Central Asia -->
+          <path d="M535,90 Q570,82 610,80 Q650,78 690,82 Q720,88 740,95 Q750,105 745,115 Q738,120 725,118 Q700,115 680,110 Q650,105 620,102 Q590,100 565,98 Q545,97 535,95Z"/>
+          <!-- South Asia -->
+          <path d="M620,160 Q635,155 650,160 Q660,168 665,180 Q662,195 655,205 Q645,210 635,205 Q625,198 620,185 Q618,172 620,160Z"/>
+          <!-- Southeast Asia -->
+          <path d="M680,195 Q695,190 710,195 Q720,200 725,210 Q728,225 722,235 Q712,240 700,235 Q690,228 685,218 Q680,208 680,195Z"/>
+          <!-- East Asia -->
+          <path d="M700,120 Q720,115 740,120 Q755,128 760,142 Q758,155 750,162 Q740,165 728,160 Q715,155 708,145 Q702,135 700,125Z"/>
+          <!-- Australia -->
+          <path d="M720,270 Q740,262 760,268 Q775,278 778,295 Q775,310 765,318 Q752,322 740,318 Q728,310 722,298 Q718,285 720,270Z"/>
+        </g>
+        <!-- Dynamic elements injected by JS -->
+        <g id="arcs-layer"></g>
+        <g id="regions-layer"></g>
+      </svg>
+
+      <!-- Glass Box Panel -->
+      <div id="glassbox">
+        <div class="gb-header">
+          <span class="mono" style="font-size:8px;color:#818cf8;letter-spacing:1.5px;font-weight:600;">🔍 GLASS BOX — EXPLAINABILITY</span>
+          <button class="gb-close" onclick="closeGlassBox()">×</button>
+        </div>
+        <div class="gb-body" id="gb-content"></div>
+      </div>
+
+      <!-- Alert Box -->
+      <div id="alert-box"></div>
+
+      <!-- Stats Bar -->
+      <div id="stats-bar">
+        <div class="stat-card"><div class="stat-value" id="stat-regions" style="color:var(--accent);">0</div><div class="stat-label mono">REGIONS AFFECTED</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-events" style="color:var(--amber);">0</div><div class="stat-label mono">CASCADE EVENTS</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-pop" style="color:var(--red);">0M</div><div class="stat-label mono">POPULATION AT RISK</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-severity" style="color:var(--purple);">0%</div><div class="stat-label mono">AVG SEVERITY</div></div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div id="timeline-bar">
+      <div class="tl-container">
+        <button class="tl-btn tl-play" id="btn-play" onclick="togglePlay()">▶</button>
+        <button class="tl-btn tl-reset" onclick="resetSim()">↺</button>
+        <div class="tl-track" id="tl-track">
+          <div class="tl-rail"></div>
+          <div class="tl-progress" id="tl-progress"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span class="mono" style="font-size:7.5px;color:var(--text-muted);">SPEED</span>
+          <button class="speed-btn" onclick="setSpeed(0.5)">0.5x</button>
+          <button class="speed-btn active" onclick="setSpeed(1)">1x</button>
+          <button class="speed-btn" onclick="setSpeed(2)">2x</button>
+        </div>
+        <div class="tl-time mono" id="tl-time">READY</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// DATA
+// ════════════════════════════════════════════════
+
+const REGIONS = [
+  { id:"east_africa", name:"East Africa", sub:"Horn Region", pop:130, x:535, y:220 },
+  { id:"sahel", name:"Sahel Belt", sub:"W. Africa Interior", pop:135, x:478, y:205 },
+  { id:"south_asia", name:"South Asia", sub:"Bangladesh Delta", pop:190, x:645, y:195 },
+  { id:"middle_east", name:"Middle East", sub:"Levant", pop:45, x:562, y:172 },
+  { id:"north_africa", name:"North Africa", sub:"Mediterranean Coast", pop:120, x:498, y:178 },
+  { id:"southeast_asia", name:"SE Asia", sub:"Maritime & Mainland", pop:250, x:700, y:215 },
+  { id:"central_america", name:"C. America", sub:"Northern Triangle", pop:50, x:240, y:210 },
+  { id:"southern_europe", name:"S. Europe", sub:"Mediterranean", pop:130, x:505, y:145 },
+  { id:"west_africa", name:"W. Africa", sub:"Coastal Nations", pop:200, x:460, y:222 },
+  { id:"caribbean", name:"Caribbean", sub:"Island Nations", pop:25, x:268, y:200 },
+  { id:"south_america", name:"S. America", sub:"Tropical Region", pop:180, x:310, y:260 },
+  { id:"east_asia", name:"E. Asia", sub:"Pacific Rim", pop:500, x:730, y:148 },
+  { id:"central_asia", name:"Central Asia", sub:"Steppe Region", pop:75, x:615, y:135 },
+  { id:"pacific_islands", name:"Pacific Islands", sub:"Oceania", pop:12, x:770, y:255 },
+  { id:"arctic", name:"Arctic Zone", sub:"Circumpolar", pop:4, x:500, y:82 },
+  { id:"amazon", name:"Amazon Basin", sub:"Rainforest Core", pop:35, x:320, y:235 },
+  { id:"north_america", name:"N. America", sub:"Industrialized", pop:370, x:225, y:135 },
+  { id:"russia", name:"Russia", sub:"Northern Eurasia", pop:144, x:640, y:100 },
+];
+
+const SCENARIOS = {
+  drought_cascade: {
+    name: "East Africa Drought Cascade", tag:"CLIMATE", tagColor:"#ef4444",
+    desc: "Multi-season drought triggers continent-spanning food-migration-conflict spiral",
+    steps: [
+      { t:0, r:"east_africa", risk:"drought", sev:0.92, label:"3 consecutive failed rainy seasons — worst in 40 years", icon:"🌡️", color:"#ef4444" },
+      { t:1, r:"east_africa", risk:"food_crisis", sev:0.88, label:"70% crop failure — 23M face acute food insecurity", icon:"🌾", color:"#f59e0b" },
+      { t:1, r:"east_africa", risk:"water", sev:0.84, label:"Rivers at historic lows — livestock die-off accelerates", icon:"💧", color:"#3b82f6" },
+      { t:2, r:"sahel", risk:"food_crisis", sev:0.75, label:"Food price shock propagates through Sahel markets", icon:"🌾", color:"#f59e0b", from:"east_africa" },
+      { t:2, r:"east_africa", risk:"health", sev:0.71, label:"Malnutrition surges — cholera from unsafe water", icon:"🦠", color:"#a855f7" },
+      { t:3, r:"middle_east", risk:"food_crisis", sev:0.65, label:"Global wheat prices spike 45% — import-dependent nations hit", icon:"🌾", color:"#f59e0b", from:"east_africa" },
+      { t:3, r:"east_africa", risk:"migration", sev:0.79, label:"2.3M displaced — migration corridors overwhelmed", icon:"🚶", color:"#ec4899" },
+      { t:4, r:"north_africa", risk:"food_crisis", sev:0.62, label:"Egypt wheat reserves critical — bread subsidies collapse", icon:"🌾", color:"#f59e0b", from:"middle_east" },
+      { t:4, r:"sahel", risk:"conflict", sev:0.70, label:"Armed conflict erupts over scarce resources", icon:"⚔️", color:"#ef4444" },
+      { t:5, r:"southern_europe", risk:"migration", sev:0.58, label:"Mediterranean migration surges 300%", icon:"🚶", color:"#ec4899", from:"north_africa" },
+      { t:5, r:"middle_east", risk:"unrest", sev:0.72, label:"Food riots in urban centers — echoes of 2011 Arab Spring", icon:"⚡", color:"#ef4444" },
+      { t:6, r:"north_africa", risk:"unrest", sev:0.67, label:"Political destabilization — government authority erodes", icon:"⚡", color:"#ef4444" },
+      { t:6, r:"east_africa", risk:"pandemic", sev:0.63, label:"Disease outbreaks in overcrowded displacement camps", icon:"🦠", color:"#a855f7" },
+      { t:7, r:"southern_europe", risk:"infrastructure", sev:0.52, label:"Reception systems overwhelmed — EU emergency activated", icon:"🏗️", color:"#6366f1" },
+      { t:7, r:"south_asia", risk:"food_crisis", sev:0.55, label:"Global grain disruption reaches South Asian importers", icon:"🌾", color:"#f59e0b", from:"east_africa" },
+    ]
+  },
+  cyclone_cascade: {
+    name: "Bangladesh Super-Cyclone", tag:"DISASTER", tagColor:"#3b82f6",
+    desc: "Category 5 cyclone devastates delta region, triggering humanitarian and economic collapse",
+    steps: [
+      { t:0, r:"south_asia", risk:"cyclone", sev:0.95, label:"Category 5 cyclone — 280 km/h winds hit Ganges Delta", icon:"🌀", color:"#3b82f6" },
+      { t:1, r:"south_asia", risk:"infrastructure", sev:0.89, label:"Coastal infrastructure destroyed — 18M without power", icon:"🏗️", color:"#6366f1" },
+      { t:1, r:"south_asia", risk:"flood", sev:0.91, label:"6-meter storm surge floods 30% of low-lying land", icon:"🌊", color:"#3b82f6" },
+      { t:2, r:"south_asia", risk:"food_crisis", sev:0.78, label:"Rice paddies destroyed — 60% crop loss across delta", icon:"🌾", color:"#f59e0b" },
+      { t:2, r:"south_asia", risk:"health", sev:0.76, label:"Waterborne disease outbreak — contaminated floodwater", icon:"🦠", color:"#a855f7" },
+      { t:3, r:"south_asia", risk:"migration", sev:0.82, label:"8M internally displaced — largest climate displacement event", icon:"🚶", color:"#ec4899" },
+      { t:3, r:"southeast_asia", risk:"food_crisis", sev:0.58, label:"Regional rice supply disruption — prices surge 35%", icon:"🌾", color:"#f59e0b", from:"south_asia" },
+      { t:4, r:"south_asia", risk:"pandemic", sev:0.69, label:"Cholera epidemic in overcrowded emergency shelters", icon:"🦠", color:"#a855f7" },
+      { t:4, r:"east_asia", risk:"economic", sev:0.52, label:"Garment industry collapse disrupts $40B global supply chain", icon:"📉", color:"#f59e0b", from:"south_asia" },
+      { t:5, r:"southeast_asia", risk:"migration", sev:0.55, label:"Cross-border displacement strains Myanmar border", icon:"🚶", color:"#ec4899", from:"south_asia" },
+    ]
+  },
+  pandemic_cascade: {
+    name: "Zoonotic Pandemic Emergence", tag:"HEALTH", tagColor:"#a855f7",
+    desc: "Novel pathogen from deforestation-wildlife interface goes global within weeks",
+    steps: [
+      { t:0, r:"southeast_asia", risk:"pandemic", sev:0.90, label:"Novel pathogen detected — R₀ estimated at 4.1", icon:"🦠", color:"#a855f7" },
+      { t:1, r:"southeast_asia", risk:"health", sev:0.85, label:"Healthcare systems overwhelmed — ICU capacity 340%", icon:"🏥", color:"#ef4444" },
+      { t:1, r:"east_asia", risk:"pandemic", sev:0.78, label:"Cross-border transmission confirmed in 4 nations", icon:"🦠", color:"#a855f7", from:"southeast_asia" },
+      { t:2, r:"south_asia", risk:"pandemic", sev:0.72, label:"Community spread in dense megacities — 50M exposed", icon:"🦠", color:"#a855f7", from:"southeast_asia" },
+      { t:2, r:"southeast_asia", risk:"economic", sev:0.76, label:"Lockdowns collapse tourism — 40% GDP contraction", icon:"📉", color:"#f59e0b" },
+      { t:3, r:"middle_east", risk:"pandemic", sev:0.60, label:"Virus reaches major air-travel hubs", icon:"🦠", color:"#a855f7", from:"east_asia" },
+      { t:3, r:"southern_europe", risk:"pandemic", sev:0.64, label:"European community spread — containment fails", icon:"🦠", color:"#a855f7", from:"middle_east" },
+      { t:4, r:"north_africa", risk:"pandemic", sev:0.55, label:"Spread across Africa — surveillance systems buckle", icon:"🦠", color:"#a855f7", from:"middle_east" },
+      { t:4, r:"east_asia", risk:"infrastructure", sev:0.58, label:"Supply chain collapse — critical medicine shortages", icon:"🏗️", color:"#6366f1" },
+      { t:5, r:"north_america", risk:"pandemic", sev:0.62, label:"Americas outbreak — hospitals nearing capacity", icon:"🦠", color:"#a855f7", from:"southern_europe" },
+      { t:5, r:"caribbean", risk:"pandemic", sev:0.52, label:"Island nations devastated — tourism economy implodes", icon:"🦠", color:"#a855f7", from:"north_america" },
+      { t:6, r:"south_america", risk:"pandemic", sev:0.58, label:"Southern hemisphere wave begins — winter amplification", icon:"🦠", color:"#a855f7", from:"caribbean" },
+    ]
+  },
+  permafrost_cascade: {
+    name: "Arctic Permafrost Collapse", tag:"TIPPING POINT", tagColor:"#06b6d4",
+    desc: "Thawing permafrost releases methane mega-pulse, accelerating warming beyond 2°C threshold",
+    steps: [
+      { t:0, r:"arctic", risk:"permafrost", sev:0.88, label:"Siberian permafrost thaw reaches critical depth — methane mega-pulse", icon:"🧊", color:"#06b6d4" },
+      { t:1, r:"arctic", risk:"emissions", sev:0.85, label:"50Gt methane equivalent released — warming accelerates 0.3°C/decade", icon:"💨", color:"#94a3b8" },
+      { t:1, r:"russia", risk:"infrastructure", sev:0.72, label:"Ground subsidence destroys pipelines, buildings, roads", icon:"🏗️", color:"#6366f1", from:"arctic" },
+      { t:2, r:"arctic", risk:"sea_ice", sev:0.90, label:"Ice-free Arctic summers — albedo feedback loop triggered", icon:"🌊", color:"#3b82f6" },
+      { t:2, r:"russia", risk:"economic", sev:0.65, label:"$50B infrastructure damage — Arctic cities destabilized", icon:"📉", color:"#f59e0b" },
+      { t:3, r:"south_asia", risk:"flood", sev:0.73, label:"Accelerated sea level rise threatens 40M in low-lying deltas", icon:"🌊", color:"#3b82f6", from:"arctic" },
+      { t:3, r:"pacific_islands", risk:"flood", sev:0.82, label:"Island nations face existential submersion — evacuation plans activated", icon:"🌊", color:"#3b82f6", from:"arctic" },
+      { t:4, r:"southern_europe", risk:"drought", sev:0.68, label:"Mediterranean desertification accelerates — crop yields collapse", icon:"🌡️", color:"#ef4444", from:"arctic" },
+      { t:4, r:"east_africa", risk:"drought", sev:0.71, label:"Monsoon pattern disruption — East African drought intensifies", icon:"🌡️", color:"#ef4444", from:"arctic" },
+      { t:5, r:"caribbean", risk:"cyclone", sev:0.75, label:"Warmer oceans fuel Category 6-equivalent hurricanes", icon:"🌀", color:"#3b82f6", from:"arctic" },
+      { t:5, r:"north_america", risk:"extreme_weather", sev:0.62, label:"Jet stream destabilization — polar vortex events triple", icon:"❄️", color:"#06b6d4", from:"arctic" },
+      { t:6, r:"south_asia", risk:"migration", sev:0.65, label:"150M climate refugees projected by 2050 — exodus begins", icon:"🚶", color:"#ec4899" },
+    ]
+  },
+  amazon_cascade: {
+    name: "Amazon Tipping Point", tag:"ECOSYSTEM", tagColor:"#22c55e",
+    desc: "Amazon rainforest crosses dieback threshold — 'lungs of the Earth' begin net carbon emission",
+    steps: [
+      { t:0, r:"amazon", risk:"deforestation", sev:0.87, label:"Amazon crosses 25% deforestation threshold — dieback cascade begins", icon:"🌳", color:"#22c55e" },
+      { t:1, r:"amazon", risk:"emissions", sev:0.82, label:"Forest becomes net carbon emitter — 20Gt CO₂ release over decade", icon:"💨", color:"#94a3b8" },
+      { t:1, r:"south_america", risk:"water", sev:0.78, label:"Flying rivers collapse — São Paulo water crisis", icon:"💧", color:"#3b82f6", from:"amazon" },
+      { t:2, r:"amazon", risk:"biodiversity", sev:0.90, label:"Mass extinction event — 30% of species face habitat loss", icon:"🦋", color:"#22c55e" },
+      { t:2, r:"south_america", risk:"food_crisis", sev:0.72, label:"Agricultural heartland rainfall drops 40% — soy/cattle crisis", icon:"🌾", color:"#f59e0b" },
+      { t:3, r:"east_asia", risk:"food_crisis", sev:0.58, label:"Global soy supply disruption — animal feed prices surge", icon:"🌾", color:"#f59e0b", from:"south_america" },
+      { t:3, r:"central_america", risk:"drought", sev:0.62, label:"Regional rainfall pattern shift — dry corridor expands", icon:"🌡️", color:"#ef4444", from:"amazon" },
+      { t:4, r:"west_africa", risk:"drought", sev:0.55, label:"Trans-Atlantic moisture loss reduces Sahel rainfall", icon:"🌡️", color:"#ef4444", from:"amazon" },
+      { t:4, r:"south_america", risk:"economic", sev:0.68, label:"Agricultural export collapse — $100B economic shock", icon:"📉", color:"#f59e0b" },
+      { t:5, r:"central_america", risk:"migration", sev:0.60, label:"Climate migration northward intensifies", icon:"🚶", color:"#ec4899" },
+      { t:5, r:"north_america", risk:"food_crisis", sev:0.48, label:"Food price inflation hits consumers — 15% grocery increase", icon:"🌾", color:"#f59e0b", from:"south_america" },
+    ]
+  },
+  cyber_cascade: {
+    name: "Critical Infrastructure Cyberattack", tag:"CYBER", tagColor:"#6366f1",
+    desc: "Coordinated cyberattack on global energy grid triggers cascading infrastructure failures",
+    steps: [
+      { t:0, r:"southern_europe", risk:"cyber", sev:0.88, label:"Coordinated APT attack on European energy grid SCADA systems", icon:"💻", color:"#6366f1" },
+      { t:1, r:"southern_europe", risk:"infrastructure", sev:0.85, label:"Power grid cascading failure — 80M without electricity", icon:"⚡", color:"#ef4444" },
+      { t:1, r:"north_america", risk:"cyber", sev:0.72, label:"Same malware variant detected in US grid systems", icon:"💻", color:"#6366f1", from:"southern_europe" },
+      { t:2, r:"southern_europe", risk:"health", sev:0.68, label:"Hospitals on backup power — cold chain for vaccines breaks", icon:"🏥", color:"#ef4444" },
+      { t:2, r:"north_america", risk:"infrastructure", sev:0.65, label:"Preventive shutdowns cascade through Eastern seaboard", icon:"⚡", color:"#ef4444" },
+      { t:3, r:"middle_east", risk:"economic", sev:0.62, label:"Oil trading systems disrupted — energy market chaos", icon:"📉", color:"#f59e0b", from:"southern_europe" },
+      { t:3, r:"east_asia", risk:"cyber", sev:0.58, label:"Financial systems targeted — stock markets halt trading", icon:"💻", color:"#6366f1", from:"north_america" },
+      { t:4, r:"southern_europe", risk:"food_crisis", sev:0.55, label:"Refrigeration failure — food supply chain collapses", icon:"🌾", color:"#f59e0b" },
+      { t:4, r:"north_america", risk:"unrest", sev:0.52, label:"Public panic — fuel hoarding and supply disruption", icon:"⚡", color:"#ef4444" },
+      { t:5, r:"south_asia", risk:"infrastructure", sev:0.48, label:"Interconnected grid vulnerabilities exploited", icon:"🏗️", color:"#6366f1", from:"east_asia" },
+    ]
+  },
+  superbug_cascade: {
+    name: "Antibiotic Resistance Crisis", tag:"HEALTH", tagColor:"#a855f7",
+    desc: "Pan-resistant superbug strain emerges, rendering last-resort antibiotics ineffective globally",
+    steps: [
+      { t:0, r:"south_asia", risk:"superbug", sev:0.86, label:"Pan-resistant K. pneumoniae strain detected — no known antibiotic effective", icon:"🧬", color:"#a855f7" },
+      { t:1, r:"south_asia", risk:"health", sev:0.82, label:"Hospital-acquired infections surge 500% — routine surgeries halted", icon:"🏥", color:"#ef4444" },
+      { t:1, r:"middle_east", risk:"superbug", sev:0.68, label:"Medical tourism carries resistance genes to Gulf states", icon:"🧬", color:"#a855f7", from:"south_asia" },
+      { t:2, r:"southeast_asia", risk:"superbug", sev:0.72, label:"Aquaculture antibiotic use spreads resistance to environment", icon:"🧬", color:"#a855f7", from:"south_asia" },
+      { t:2, r:"south_asia", risk:"economic", sev:0.65, label:"Healthcare costs explode — $1T projected annual burden", icon:"📉", color:"#f59e0b" },
+      { t:3, r:"southern_europe", risk:"superbug", sev:0.60, label:"European hospitals report untreatable infections", icon:"🧬", color:"#a855f7", from:"middle_east" },
+      { t:3, r:"east_africa", risk:"health", sev:0.70, label:"TB becomes untreatable — mortality returns to pre-antibiotic era", icon:"🦠", color:"#a855f7", from:"south_asia" },
+      { t:4, r:"north_america", risk:"superbug", sev:0.55, label:"FDA emergency authorization for experimental phage therapy", icon:"🧬", color:"#a855f7", from:"southern_europe" },
+      { t:4, r:"east_africa", risk:"pandemic", sev:0.72, label:"Untreatable infections compound with HIV/TB co-epidemics", icon:"🦠", color:"#a855f7" },
+      { t:5, r:"east_asia", risk:"food_crisis", sev:0.52, label:"Livestock industry crisis — animal antibiotics fail globally", icon:"🌾", color:"#f59e0b", from:"southeast_asia" },
+      { t:5, r:"south_america", risk:"superbug", sev:0.50, label:"Resistance genes found in Amazon river systems", icon:"🧬", color:"#a855f7", from:"south_asia" },
+    ]
+  },
+  megaquake_cascade: {
+    name: "Pacific Ring of Fire Mega-Quake", tag:"DISASTER", tagColor:"#f59e0b",
+    desc: "M9.2 earthquake triggers tsunami chain across Pacific, compounding nuclear and industrial risks",
+    steps: [
+      { t:0, r:"east_asia", risk:"earthquake", sev:0.95, label:"M9.2 megathrust earthquake — Nankai Trough ruptures", icon:"🔴", color:"#ef4444" },
+      { t:1, r:"east_asia", risk:"tsunami", sev:0.92, label:"15-meter tsunami wave strikes Pacific coastline", icon:"🌊", color:"#3b82f6" },
+      { t:1, r:"east_asia", risk:"infrastructure", sev:0.88, label:"Nuclear plant cooling systems compromised — Level 5 alert", icon:"☢️", color:"#f59e0b" },
+      { t:2, r:"pacific_islands", risk:"tsunami", sev:0.75, label:"Tsunami reaches Pacific islands — low-lying atolls submerged", icon:"🌊", color:"#3b82f6", from:"east_asia" },
+      { t:2, r:"east_asia", risk:"economic", sev:0.85, label:"$2.5T damage — global semiconductor supply chain severed", icon:"📉", color:"#f59e0b" },
+      { t:3, r:"southeast_asia", risk:"tsunami", sev:0.62, label:"Reflected waves hit Philippine and Vietnamese coasts", icon:"🌊", color:"#3b82f6", from:"east_asia" },
+      { t:3, r:"north_america", risk:"tsunami", sev:0.55, label:"Pacific tsunami warning — West Coast evacuations begin", icon:"🌊", color:"#3b82f6", from:"east_asia" },
+      { t:4, r:"east_asia", risk:"health", sev:0.68, label:"Radiation zone expanding — 2M evacuated from exclusion area", icon:"☢️", color:"#f59e0b" },
+      { t:4, r:"north_america", risk:"economic", sev:0.72, label:"Tech industry paralyzed — chip shortage crashes global markets", icon:"📉", color:"#f59e0b", from:"east_asia" },
+      { t:5, r:"southern_europe", risk:"economic", sev:0.55, label:"Auto industry halts — no chips for 6+ months", icon:"📉", color:"#f59e0b", from:"east_asia" },
+      { t:5, r:"south_asia", risk:"economic", sev:0.48, label:"Electronics manufacturing shifts but can't scale fast enough", icon:"📉", color:"#f59e0b", from:"east_asia" },
+    ]
+  },
+  freshwater_cascade: {
+    name: "Global Freshwater Crisis", tag:"RESOURCE", tagColor:"#3b82f6",
+    desc: "Simultaneous aquifer depletion across 3 continents triggers water wars and agricultural collapse",
+    steps: [
+      { t:0, r:"central_asia", risk:"water", sev:0.85, label:"Aral Sea region aquifers depleted — irreversible groundwater loss", icon:"💧", color:"#3b82f6" },
+      { t:0, r:"south_asia", risk:"water", sev:0.82, label:"Indus River flow drops 40% — Himalayan glaciers at tipping point", icon:"💧", color:"#3b82f6" },
+      { t:1, r:"middle_east", risk:"water", sev:0.80, label:"Jordan River basin shared water treaty collapses", icon:"💧", color:"#3b82f6" },
+      { t:1, r:"central_asia", risk:"food_crisis", sev:0.75, label:"Cotton & wheat irrigation impossible — agricultural collapse", icon:"🌾", color:"#f59e0b" },
+      { t:2, r:"south_asia", risk:"food_crisis", sev:0.78, label:"Punjab breadbasket fails — 800M food security threatened", icon:"🌾", color:"#f59e0b" },
+      { t:2, r:"middle_east", risk:"conflict", sev:0.72, label:"Water-war tensions — military posturing along shared rivers", icon:"⚔️", color:"#ef4444" },
+      { t:3, r:"north_africa", risk:"water", sev:0.65, label:"Nile water sharing dispute escalates — dam tensions rise", icon:"💧", color:"#3b82f6", from:"middle_east" },
+      { t:3, r:"south_asia", risk:"migration", sev:0.70, label:"30M climate-water refugees begin internal displacement", icon:"🚶", color:"#ec4899" },
+      { t:4, r:"east_africa", risk:"water", sev:0.68, label:"Lake Victoria levels plummet — regional water crisis", icon:"💧", color:"#3b82f6", from:"north_africa" },
+      { t:4, r:"central_asia", risk:"conflict", sev:0.62, label:"Cross-border tensions over upstream dam control", icon:"⚔️", color:"#ef4444" },
+      { t:5, r:"north_america", risk:"water", sev:0.55, label:"Ogallala Aquifer depletion accelerates — US breadbasket at risk", icon:"💧", color:"#3b82f6" },
+      { t:5, r:"east_africa", risk:"migration", sev:0.60, label:"Water refugees compound existing displacement crisis", icon:"🚶", color:"#ec4899", from:"east_africa" },
+      { t:6, r:"north_america", risk:"food_crisis", sev:0.52, label:"US grain exports decline — global food price inflation 25%", icon:"🌾", color:"#f59e0b" },
+    ]
+  },
+};
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let currentScenario = 'drought_cascade';
+let currentTime = -1;
+let isPlaying = false;
+let speed = 1;
+let playTimer = null;
+let selectedEvent = null;
+
+// ════════════════════════════════════════════════
+// RENDER FUNCTIONS
+// ════════════════════════════════════════════════
+
+function renderScenarios() {
+  const el = document.getElementById('scenarios');
+  el.innerHTML = Object.entries(SCENARIOS).map(([key, sc]) => `
+    <button class="scenario-btn ${key === currentScenario ? 'active' : ''}" onclick="selectScenario('${key}')">
+      <div class="sc-name">${sc.name}</div>
+      <div class="sc-desc">${sc.desc}</div>
+      <span class="sc-tag mono" style="background:${sc.tagColor}18;color:${sc.tagColor}">${sc.tag}</span>
+    </button>
+  `).join('');
+}
+
+function renderEventFeed() {
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const el = document.getElementById('event-feed');
+  const title = document.getElementById('feed-title');
+  title.textContent = currentTime >= 0 ? `CASCADE EVENT LOG — ${active.length} EVENTS` : 'AWAITING SIMULATION';
+
+  if (currentTime < 0) {
+    el.innerHTML = '<div class="empty-state">Press <span style="color:#818cf8;font-weight:600;">▶ SIMULATE</span><br>to begin cascade analysis</div>';
+    return;
+  }
+
+  el.innerHTML = active.map((s, i) => {
+    const region = REGIONS.find(r => r.id === s.r);
+    return `<div class="event-card ${selectedEvent === i ? 'selected' : ''}" style="animation-delay:${i*0.04}s" onclick="selectEventByIndex(${i})">
+      <div class="ev-header">
+        <span class="ev-time mono">T+${s.t}</span>
+        <span style="font-size:12px">${s.icon}</span>
+        <span class="ev-region" style="color:${s.color}">${region?.name || s.r}</span>
+      </div>
+      <div class="ev-label">${s.label}</div>
+      <div class="ev-severity-bar"><div class="ev-severity-fill" style="width:${s.sev*100}%;background:linear-gradient(90deg,${s.color}66,${s.color})"></div></div>
+      <div class="ev-severity-label mono">SEVERITY ${Math.round(s.sev*100)}%</div>
+    </div>`;
+  }).join('');
+
+  // Auto-scroll to bottom
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderMap() {
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const regionRisks = {};
+  active.forEach(s => {
+    if (!regionRisks[s.r]) regionRisks[s.r] = [];
+    regionRisks[s.r].push(s);
+  });
+
+  // Arcs
+  const arcsLayer = document.getElementById('arcs-layer');
+  const arcsHTML = active.filter(s => s.from).map(s => {
+    const fromR = REGIONS.find(r => r.id === s.from);
+    const toR = REGIONS.find(r => r.id === s.r);
+    if (!fromR || !toR) return '';
+    const dx = toR.x - fromR.x, dy = toR.y - fromR.y;
+    const dr = Math.sqrt(dx*dx + dy*dy) * 0.5;
+    const sweep = dx > 0 ? 1 : 0;
+    return `<path d="M${fromR.x},${fromR.y} A${dr},${dr} 0 0,${sweep} ${toR.x},${toR.y}"
+      fill="none" stroke="${s.color}" stroke-width="1.5" opacity="0.7"
+      stroke-dasharray="4,3" filter="url(#glow)" style="animation:fadeIn 0.6s ease">
+      <animate attributeName="stroke-dashoffset" values="20;0" dur="1.5s" repeatCount="indefinite"/>
+    </path>`;
+  }).join('');
+  arcsLayer.innerHTML = arcsHTML;
+
+  // Regions
+  const regionsLayer = document.getElementById('regions-layer');
+  let regionsHTML = '';
+  REGIONS.forEach(region => {
+    const events = regionRisks[region.id] || [];
+    const isActive = events.length > 0;
+    const maxSev = isActive ? Math.max(...events.map(e => e.sev)) : 0;
+    const mainColor = isActive ? events[events.length-1].color : '#1e293b';
+    const isTrigger = region.id === sc.trigger && currentTime >= 0;
+
+    // Ambient glow
+    if (isActive) {
+      regionsHTML += `<circle cx="${region.x}" cy="${region.y}" r="${20+maxSev*25}" fill="${mainColor}" opacity="0.04"/>`;
+      // Ripple
+      regionsHTML += `<circle cx="${region.x}" cy="${region.y}" fill="none" stroke="${mainColor}" stroke-width="1" opacity="0">
+        <animate attributeName="r" values="5;35" dur="2.5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.4;0" dur="2.5s" repeatCount="indefinite"/>
+      </circle>`;
+    }
+
+    // Epicenter
+    if (isTrigger) {
+      regionsHTML += `<circle cx="${region.x}" cy="${region.y}" fill="none" stroke="#ef4444" stroke-width="1.5">
+        <animate attributeName="r" values="4;45" dur="3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.5;0" dur="3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="${region.x}" cy="${region.y}" fill="none" stroke="#ef4444" stroke-width="1">
+        <animate attributeName="r" values="4;55" dur="3.5s" begin="0.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.3;0" dur="3.5s" begin="0.6s" repeatCount="indefinite"/>
+      </circle>`;
+    }
+
+    // Main dot
+    const r = isActive ? 4 + maxSev * 4 : 2.5;
+    regionsHTML += `<circle cx="${region.x}" cy="${region.y}" r="${r}"
+      fill="${isActive ? mainColor : '#0f172a'}" stroke="${isActive ? mainColor : '#1e293b'}"
+      stroke-width="${isActive ? 1.5 : 0.5}" ${isActive ? 'filter="url(#glow)"' : ''}
+      style="cursor:pointer;transition:all 0.5s" onclick="onRegionClick('${region.id}')"/>`;
+
+    // Risk stack icons
+    if (isActive) {
+      const icons = events.slice(-3);
+      icons.forEach((ev, i) => {
+        regionsHTML += `<text x="${region.x + 10 + i*11}" y="${region.y - 10}" font-size="8" text-anchor="middle"
+          style="animation:fadeIn 0.3s ease ${i*0.1}s both">${ev.icon}</text>`;
+      });
+    }
+
+    // Label
+    regionsHTML += `<text x="${region.x}" y="${region.y + (isActive ? 14 + maxSev*5 : 12)}"
+      text-anchor="middle" font-size="${isActive ? 6.5 : 5.5}" font-weight="${isActive ? 600 : 400}"
+      fill="${isActive ? mainColor : '#1e293b'}" font-family="'Outfit',sans-serif"
+      style="transition:all 0.5s">${region.name}</text>`;
+  });
+
+  regionsLayer.innerHTML = regionsHTML;
+}
+
+function renderTimeline() {
+  const sc = SCENARIOS[currentScenario];
+  const maxT = Math.max(...sc.steps.map(s => s.t));
+  const track = document.getElementById('tl-track');
+  const progress = document.getElementById('tl-progress');
+  const timeDisplay = document.getElementById('tl-time');
+  const playBtn = document.getElementById('btn-play');
+
+  progress.style.width = currentTime >= 0 ? `${(currentTime / maxT) * 100}%` : '0%';
+  timeDisplay.textContent = currentTime >= 0 ? `T+${currentTime} / T+${maxT}` : 'READY';
+  timeDisplay.className = `tl-time mono ${currentTime >= 0 ? 'active' : ''}`;
+  playBtn.textContent = isPlaying ? '⏸' : '▶';
+  playBtn.className = `tl-btn ${isPlaying ? 'tl-stop' : 'tl-play'}`;
+
+  // Markers
+  const existingMarkers = track.querySelectorAll('.tl-marker');
+  existingMarkers.forEach(m => m.remove());
+  for (let i = 0; i <= maxT; i++) {
+    const pct = (i / maxT) * 100;
+    const marker = document.createElement('div');
+    marker.className = 'tl-marker';
+    marker.style.left = pct + '%';
+    marker.onclick = () => jumpToTime(i);
+    const dotClass = i === currentTime ? 'current' : i <= currentTime ? 'reached' : '';
+    const labelClass = i === currentTime ? 'current' : i <= currentTime ? 'reached' : '';
+    marker.innerHTML = `<div class="tl-dot ${dotClass}"></div><span class="tl-label mono ${labelClass}">T+${i}</span>`;
+    track.appendChild(marker);
+  }
+}
+
+function renderStats() {
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const regions = new Set(active.map(s => s.r));
+  const totalPop = [...regions].reduce((sum, rid) => {
+    const r = REGIONS.find(reg => reg.id === rid);
+    return sum + (r ? r.pop : 0);
+  }, 0);
+  const avgSev = active.length ? active.reduce((s, e) => s + e.sev, 0) / active.length : 0;
+
+  document.getElementById('stat-regions').textContent = regions.size;
+  document.getElementById('stat-events').textContent = active.length;
+  document.getElementById('stat-pop').textContent = totalPop > 0 ? totalPop + 'M' : '0';
+  document.getElementById('stat-severity').textContent = Math.round(avgSev * 100) + '%';
+
+  // Global severity
+  const gs = document.getElementById('global-severity');
+  if (currentTime < 0) { gs.textContent = 'GLOBAL RISK: —'; gs.style.color = 'var(--text-muted)'; }
+  else if (avgSev > 0.7) { gs.textContent = 'GLOBAL RISK: CRITICAL'; gs.style.color = '#ef4444'; }
+  else if (avgSev > 0.55) { gs.textContent = 'GLOBAL RISK: HIGH'; gs.style.color = '#f59e0b'; }
+  else { gs.textContent = 'GLOBAL RISK: ELEVATED'; gs.style.color = '#f59e0b'; }
+}
+
+function renderAlert() {
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const el = document.getElementById('alert-box');
+  if (active.length === 0) { el.classList.remove('visible'); return; }
+  const latest = active[active.length - 1];
+  const region = REGIONS.find(r => r.id === latest.r);
+  el.classList.add('visible');
+  el.style.borderColor = latest.color + '33';
+  el.innerHTML = `<div style="padding:10px 14px;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+      <div style="width:6px;height:6px;border-radius:50%;background:${latest.color};animation:pulse 1.2s infinite"></div>
+      <span class="mono" style="font-size:7.5px;color:${latest.color};letter-spacing:1.5px;font-weight:600;">LATEST — T+${latest.t}</span>
+    </div>
+    <div style="font-size:11px;line-height:1.5;">${latest.icon} ${latest.label}</div>
+    <div class="mono" style="font-size:8px;color:var(--text-muted);margin-top:4px;">
+      ${region?.name} • Severity ${Math.round(latest.sev*100)}%
+    </div>
+  </div>`;
+}
+
+function renderGlassBox() {
+  if (selectedEvent === null) { document.getElementById('glassbox').classList.remove('visible'); return; }
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const ev = active[selectedEvent];
+  if (!ev) return;
+  const region = REGIONS.find(r => r.id === ev.r);
+  document.getElementById('glassbox').classList.add('visible');
+  document.getElementById('gb-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:22px">${ev.icon}</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;">${ev.risk.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div>
+        <div style="font-size:9px;color:${ev.color}">${region?.name} — ${region?.sub}</div>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">${ev.label}</div>
+    <div style="padding:10px;background:rgba(99,102,241,0.04);border-radius:6px;border:1px solid rgba(99,102,241,0.08)">
+      <div class="gb-row mono"><span class="gb-key">Confidence:</span> <span class="gb-green">${(0.72+ev.sev*0.22).toFixed(2)}</span></div>
+      <div class="gb-row mono"><span class="gb-key">Data Sources:</span> NASA GISS, WHO GHO, FAO GIEWS, NOAA</div>
+      <div class="gb-row mono"><span class="gb-key">LLM Consensus:</span> <span class="gb-green">3/3 agree</span> (via Commonstack.ai)</div>
+      <div class="gb-row mono"><span class="gb-key">Causal Path:</span> ${ev.from ? ev.from + ' → ' + ev.r : 'Primary trigger event'}</div>
+      <div class="gb-row mono"><span class="gb-key">Bias Check:</span> <span class="gb-green">Passed — no demographic skew</span></div>
+      <div class="gb-row mono"><span class="gb-key">Energy Cost:</span> <span class="gb-green">0.002 kWh</span> (optimized routing)</div>
+      <div class="gb-row mono"><span class="gb-key">Updated:</span> ${new Date().toISOString().slice(0,16)} UTC</div>
+    </div>
+  `;
+}
+
+function renderAll() {
+  renderMap();
+  renderEventFeed();
+  renderTimeline();
+  renderStats();
+  renderAlert();
+  renderGlassBox();
+}
+
+// ════════════════════════════════════════════════
+// ACTIONS
+// ════════════════════════════════════════════════
+
+function selectScenario(key) {
+  resetSim();
+  currentScenario = key;
+  renderScenarios();
+  renderAll();
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    clearInterval(playTimer);
+    isPlaying = false;
+    renderTimeline();
+    return;
+  }
+  if (currentTime >= Math.max(...SCENARIOS[currentScenario].steps.map(s=>s.t))) {
+    currentTime = -1;
+  }
+  isPlaying = true;
+  // LLM animation
+  setLLMStatus('analyzing');
+  setTimeout(() => setLLMEl('llm-claude', 'confirmed'), 600);
+  setTimeout(() => setLLMEl('llm-gemini', 'confirmed'), 1100);
+  setTimeout(() => setLLMEl('llm-gpt', 'confirmed'), 1600);
+
+  advanceTime();
+}
+
+function advanceTime() {
+  const maxT = Math.max(...SCENARIOS[currentScenario].steps.map(s=>s.t));
+  playTimer = setInterval(() => {
+    currentTime++;
+    renderAll();
+    if (currentTime >= maxT) {
+      clearInterval(playTimer);
+      isPlaying = false;
+      renderTimeline();
+      setTimeout(() => setLLMStatus('idle'), 2000);
+    }
+  }, 2000 / speed);
+  // Kick off first frame
+  currentTime++;
+  renderAll();
+}
+
+function resetSim() {
+  clearInterval(playTimer);
+  isPlaying = false;
+  currentTime = -1;
+  selectedEvent = null;
+  setLLMStatus('idle');
+  renderAll();
+}
+
+function jumpToTime(t) {
+  clearInterval(playTimer);
+  isPlaying = false;
+  currentTime = t;
+  renderAll();
+}
+
+function setSpeed(s) {
+  speed = s;
+  document.querySelectorAll('.speed-btn').forEach((btn, i) => {
+    btn.className = 'speed-btn mono' + ([0.5,1,2][i] === s ? ' active' : '');
+  });
+  if (isPlaying) {
+    clearInterval(playTimer);
+    advanceTime();
+  }
+}
+
+function selectEventByIndex(i) {
+  selectedEvent = i;
+  renderEventFeed();
+  renderGlassBox();
+}
+
+function onRegionClick(regionId) {
+  const sc = SCENARIOS[currentScenario];
+  const active = sc.steps.filter(s => s.t <= currentTime);
+  const idx = active.findIndex(s => s.r === regionId);
+  if (idx >= 0) {
+    // Find last event for this region
+    let lastIdx = -1;
+    active.forEach((s, i) => { if (s.r === regionId) lastIdx = i; });
+    selectEventByIndex(lastIdx);
+  }
+}
+
+function closeGlassBox() {
+  selectedEvent = null;
+  document.getElementById('glassbox').classList.remove('visible');
+  renderEventFeed();
+}
+
+function setLLMStatus(status) {
+  ['llm-claude','llm-gpt','llm-gemini'].forEach(id => setLLMEl(id, status));
+}
+
+function setLLMEl(id, status) {
+  const el = document.getElementById(id);
+  el.className = `llm-${status}`;
+}
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+renderScenarios();
+renderAll();
+</script>
+</body>
+</html>
